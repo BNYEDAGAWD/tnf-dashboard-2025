@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prime Video: TNF 2025 Campaign Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Slate Neutrals & Amber Accent -->
+    <!-- Application Structure Plan: A dashboard-style SPA is used to manage the complexity of the three budget tiers. The core interaction is a set of buttons to toggle between tiers ($300K, $600K, $1M). This action dynamically updates a KPI card section, a main budget allocation bar chart, and a detailed weekly breakdown table. This structure was chosen to allow for direct, focused comparison between the tiers without overwhelming the user with all the data at once. Static information like strategic goals and measurement requirements are placed in separate, clear sections below the interactive dashboard, as they don't change per tier. This creates a logical hierarchy: select a scenario, see the financial impact, then review the constant strategic context. -->
+    <!-- Visualization & Content Choices: 
+        - Report Info: Budget Tiers -> Goal: Compare/Select -> Viz: Button Group -> Interaction: Click to update all dynamic elements -> Justification: The primary user task is to evaluate different budget scenarios. This makes that the central control. -> Method: JS state change.
+        - Report Info: Weekly Budget % -> Goal: Compare/Change -> Viz: Bar Chart -> Interaction: Re-renders on tier selection -> Justification: A bar chart provides an instant visual feel for the campaign's spending rhythm and priorities across the season. -> Library: Chart.js/Canvas.
+        - Report Info: Detailed Budget Tables -> Goal: Inform/Organize -> Viz: HTML Table -> Interaction: Table body is rebuilt on tier selection -> Justification: Tables are the clearest way to present precise financial data. Dynamic rebuilding keeps the view clean. -> Method: JS DOM manipulation.
+        - Report Info: KPIs (Total Budget, Due Date) -> Goal: Inform -> Viz: Styled "Stat Cards" -> Interaction: Budget value updates on tier selection -> Justification: High-visibility summary for at-a-glance information. -> Method: JS textContent update.
+        - Report Info: Strategic Goals, Audiences, etc. -> Goal: Inform -> Viz: Multi-column Text Layout -> Interaction: Static -> Justification: Organizes static but critical context into digestible, themed sections. -> Method: HTML/Tailwind.
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 1200px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 400px;
+            max-height: 50vh;
+        }
+        @media (max-width: 768px) {
+            .chart-container {
+                height: 300px;
+                max-height: 60vh;
+            }
+        }
+        .btn-tier {
+            transition: all 0.2s ease-in-out;
+        }
+        .btn-tier.active {
+            background-color: #f59e0b;
+            color: #ffffff;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        }
+        .btn-tier:not(.active) {
+            background-color: #ffffff;
+            color: #374151;
+            border: 1px solid #d1d5db;
+        }
+        .priority-week {
+            background-color: #fefce8;
+        }
+        .priority-week td:first-child {
+            border-left: 4px solid #f59e0b;
+        }
+    </style>
+</head>
+<body class="text-slate-800">
+
+    <div class="container mx-auto p-4 sm:p-6 md:p-8">
+        
+        <header class="mb-8 border-b border-slate-200 pb-6">
+            <h1 class="text-3xl md:text-4xl font-bold text-slate-900">Prime Video: Thursday Night Football 2025</h1>
+            <p class="mt-2 text-lg text-slate-600">Interactive Campaign RFP Dashboard</p>
+        </header>
+
+        <main>
+            <div id="dashboard-controls" class="mb-8">
+                <p class="text-md font-semibold text-slate-700 mb-3">Select a Budget Tier to Explore:</p>
+                <div class="flex flex-wrap gap-3">
+                    <button id="btn-tier300" class="btn-tier font-semibold py-2 px-6 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500">
+                        $300K
+                    </button>
+                    <button id="btn-tier600" class="btn-tier font-semibold py-2 px-6 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500">
+                        $600K
+                    </button>
+                    <button id="btn-tier1000" class="btn-tier font-semibold py-2 px-6 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500">
+                        $1,000,000
+                    </button>
+                </div>
+            </div>
+
+            <section id="kpi-section" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                    <h3 class="text-sm font-medium text-slate-500">Total Budget</h3>
+                    <p id="kpi-budget" class="text-3xl font-bold text-slate-900 mt-1"></p>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                    <h3 class="text-sm font-medium text-slate-500">Campaign Period</h3>
+                    <p class="text-3xl font-bold text-slate-900 mt-1">16 Weeks</p>
+                    <p class="text-xs text-slate-500">Sep 4 - Dec 25, 2025</p>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                    <h3 class="text-sm font-medium text-slate-500">Games Supported</h3>
+                    <p class="text-3xl font-bold text-slate-900 mt-1">16</p>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-amber-300 bg-amber-50">
+                    <h3 class="text-sm font-medium text-amber-700">RFP Due Date</h3>
+                    <p class="text-3xl font-bold text-amber-900 mt-1">June 16, 2025</p>
+                    <p class="text-xs text-amber-600">by 12:00 PM (noon)</p>
+                </div>
+            </section>
+            
+            <section id="chart-section" class="bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-slate-100 mb-10">
+                <h2 class="text-xl font-bold text-slate-800 mb-1">Weekly Budget Allocation (%)</h2>
+                <p class="text-slate-600 mb-4">This chart visualizes the percentage of the total budget allocated to each game week, highlighting the campaign's strategic focus on key matchups throughout the season. These percentages are consistent across all budget tiers.</p>
+                <div class="chart-container">
+                    <canvas id="budgetAllocationChart"></canvas>
+                </div>
+            </section>
+            
+            <section id="table-section" class="bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-slate-100 mb-10">
+                <h2 class="text-xl font-bold text-slate-800 mb-1">Detailed Weekly Budget Breakdown</h2>
+                 <p class="text-slate-600 mb-4">Explore the specific budget allocation for each week based on the selected tier. Priority games, including the Kickoff, Black Friday, and Christmas Day games, are highlighted for emphasis.</p>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-slate-200">
+                        <thead class="bg-slate-50">
+                            <tr>
+                                <th scope="col" class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-slate-900 sm:pl-6">Week</th>
+                                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-slate-900">Matchup</th>
+                                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-slate-900">Weekly Total</th>
+                                <th id="format-col-1" scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-slate-900"></th>
+                                <th id="format-col-2" scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-slate-900"></th>
+                                <th id="format-col-3" scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-slate-900"></th>
+                                <th id="format-col-4" scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-slate-900 sm:pr-6"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="weekly-schedule-table-body" class="divide-y divide-slate-200 bg-white">
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="strategy-section" class="mb-10">
+                 <h2 class="text-2xl font-bold text-slate-800 mb-6 border-b border-slate-200 pb-3">Strategic & Tactical Overview</h2>
+                 <p class="text-slate-600 mb-8 max-w-4xl">The following sections detail the core strategic pillars of the campaign, which remain consistent across all budget levels. This includes the primary campaign goals, the target audience segments, and the overarching creative and measurement approaches.</p>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div>
+                        <h3 class="text-xl font-bold text-slate-800 mb-4">Strategic Goals & Objectives</h3>
+                        <ul class="space-y-3 text-slate-700">
+                            <li class="flex items-start"><span class="text-amber-500 mr-3 mt-1">▶</span>Deliver highly targeted reach and contextual relevance.</li>
+                            <li class="flex items-start"><span class="text-amber-500 mr-3 mt-1">▶</span>Build brand awareness while maximizing viewership.</li>
+                            <li class="flex items-start"><span class="text-amber-500 mr-3 mt-1">▶</span>Drive acquisition (Prime Starts, First Streams, Reactivated Streams).</li>
+                            <li class="flex items-start"><span class="text-amber-500 mr-3 mt-1">▶</span>Build habitual viewing patterns among Avid and Casual viewers.</li>
+                            <li class="flex items-start"><span class="text-amber-500 mr-3 mt-1">▶</span>Increase social viewing and boost awareness of TNF on Prime Video.</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-bold text-slate-800 mb-4">Target Audiences</h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div class="bg-white p-4 rounded-lg border border-slate-200">
+                                <h4 class="font-semibold text-slate-900">Primary</h4>
+                                <ul class="mt-2 text-sm text-slate-600 list-disc list-inside">
+                                    <li>TNF Avid</li>
+                                    <li>TNF Enthusiasts</li>
+                                </ul>
+                            </div>
+                            <div class="bg-white p-4 rounded-lg border border-slate-200">
+                                <h4 class="font-semibold text-slate-900">Secondary</h4>
+                                <ul class="mt-2 text-sm text-slate-600 list-disc list-inside">
+                                    <li>TNF Fans</li>
+                                    <li>TNF Casual</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                     <div class="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                        <h3 class="text-xl font-bold text-slate-800 mb-4">Creative & Media Strategy</h3>
+                        <p class="text-slate-600">This season leverages a tiered, weekly creative rotation strategy aligned to each game. The cornerstone is the integration of a <strong class="font-semibold text-slate-800">live sports score API</strong> during games to deliver real-time relevance and a powerful tune-in incentive. Additional creative builds, such as **High Reach Branded Takeovers**, will be used as leverage for more spend unlocks, particularly during key priority games.</p>
+                        <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                            <div><strong class="font-semibold">Preferred Formats:</strong> TKOs, High Impact & Rotational, Sponsored Social, Editorial.</div>
+                             <div><strong class="font-semibold">Avoiding:</strong> Linear, O&O, Pre-Roll. **CTV is avoided generally, except in the $600K and $1M tiers.**</div>
+                            <div><strong class="font-semibold">Base Flighting:</strong> Concentrated Tuesday-Thursday weekly.</div>
+                            <div><strong class="font-semibold">Priority Flighting:</strong> "Always on" for Black Friday (11/21-11/28) and Christmas (12/20-12/25).</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <section id="measurement-section">
+                <h2 class="text-2xl font-bold text-slate-800 mb-6 border-b border-slate-200 pb-3">Measurement & Next Steps</h2>
+                 <p class="text-slate-600 mb-8 max-w-4xl">This section outlines the technical measurement requirements and key deliverables for the RFP response. Please confirm the ability to utilize all required tags and meet the specified performance benchmarks.</p>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                        <h3 class="text-xl font-bold text-slate-800 mb-4">Measurement Requirements</h3>
+                        <div class="grid grid-cols-2 gap-6">
+                            <div>
+                                <h4 class="font-semibold text-slate-900 mb-2">Required Tags</h4>
+                                <ul class="text-sm text-slate-600 space-y-1">
+                                    <li>Samba</li>
+                                    <li>Double Verify</li>
+                                    <li>Lucid</li>
+                                    <li>Standard DCM</li>
+                                </ul>
+                            </div>
+                            <div>
+                                <h4 class="font-semibold text-slate-900 mb-2">DV Benchmarks</h4>
+                                <ul class="text-sm text-slate-600 space-y-1">
+                                    <li>Viewability: <strong>73%+</strong></li>
+                                    <li>Fraud/SIVT Free: <strong>99%+</strong></li>
+                                    <li>In Geo Rate: <strong>98%+</strong></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                         <h3 class="text-xl font-bold text-slate-800 mb-4">Next Steps & Timeline</h3>
+                         <ul class="space-y-3 text-slate-700">
+                            <li class="flex items-start"><span class="text-amber-500 mr-3 mt-1">✓</span><strong>Media Plan Due:</strong> Monday, June 16 @ noon</li>
+                            <li class="flex items-start"><span class="text-amber-500 mr-3 mt-1">✓</span><strong>Format:</strong> Weekly/by-game breakdown</li>
+                            <li class="flex items-start"><span class="text-amber-500 mr-3 mt-1">✓</span><strong>Week Structure:</strong> Tuesday start to Thursday end</li>
+                             <li class="flex items-start"><span class="text-amber-500 mr-3 mt-1">✓</span><strong>Note Added Value:</strong> Analytics, creative support, etc.</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <script>
+        const campaignData = {
+            tier300: {
+                name: '$300K',
+                total: 300000,
+                formats: ['Runway ($150K)', 'Spotlight ($150K)'],
+                data: [] 
+            },
+            tier600: {
+                name: '$600K',
+                total: 600000,
+                formats: ['CTV ($200K)', 'Spotlight ($200K)', 'Runway ($200K)'],
+                data: []
+            },
+            tier1000: {
+                name: '$1,000,000',
+                total: 1000000,
+                formats: ['CTV ($233K)', 'Spotlight ($233K)', 'Runway ($233K)', 'HRBTO ($300K)'],
+                data: []
+            },
+            // Note: These allocation percentages are from the provided tables and sum to 100%.
+            schedule: [
+                { week: 2, date: '9/11', matchup: 'WAS/GB', allocation: 3.7 },
+                { week: 3, date: '9/18', matchup: 'MIA/BUF', allocation: 3.7 },
+                { week: 4, date: '9/25', matchup: 'SEA/AZ', allocation: 3.7 },
+                { week: 5, date: '10/2', matchup: 'SF/LAR', allocation: 8.1 },
+                { week: 6, date: '10/9', matchup: 'PHI/NYG', allocation: 8.1 },
+                { week: 7, date: '10/16', matchup: 'PIT/CIN', allocation: 6.7 },
+                { week: 8, date: '10/23', matchup: 'MIN/LAC', allocation: 7.4 },
+                { week: 9, date: '10/30', matchup: 'BAL/MIA', allocation: 7.4 },
+                { week: 10, date: '11/6', matchup: 'LV/DEN', allocation: 5.9 },
+                { week: 11, date: '11/13', matchup: 'NYJ/NE', allocation: 8.9 },
+                { week: 12, date: '11/20', matchup: 'BUF/HOU', allocation: 9.6 },
+                { week: 13, date: '11/28', matchup: 'CHI/PHI', allocation: 6.7, priority: true },
+                { week: 14, date: '12/4', matchup: 'DAL/DET', allocation: 7.4 },
+                { week: 15, date: '12/11', matchup: 'ATL/TB', allocation: 8.9 },
+                { week: 16, date: '12/18', matchup: 'LAR/SEA', allocation: 3.7 },
+                { week: 17, date: '12/25', matchup: 'DEN/KC', allocation: 3.7, priority: true },
+            ],
+            priorityWeeks: [2, 13, 17] 
+        };
+
+        function calculateAndPopulateTierData() {
+            // Helper to split a total into n parts, distributing remainder for exact sum
+            function splitAndRound(total, parts) {
+                let base = Math.floor(total / parts);
+                let remainder = Math.round(total % parts); // Round remainder for better distribution
+                let values = Array(parts).fill(base);
+                for (let i = 0; i < remainder; i++) {
+                    values[i]++;
+                }
+                return values;
+            }
+
+            // --- Calculate for $300K Tier ---
+            let currentTierData300 = [];
+            campaignData.schedule.forEach((item) => {
+                let weeklyTotal = Math.round((item.allocation / 100) * campaignData.tier300.total);
+                let values = splitAndRound(weeklyTotal, 2); // Split into Runway, Spotlight
+                
+                currentTierData300.push({
+                    week: item.week,
+                    date: item.date,
+                    matchup: item.matchup,
+                    total: weeklyTotal, 
+                    values: values,
+                    note: ''
+                });
+            });
+            // Ensure sum is exact for $300K tier
+            let currentSum300 = currentTierData300.reduce((sum, item) => sum + item.total, 0);
+            let diff300 = campaignData.tier300.total - currentSum300;
+            if (diff300 !== 0 && currentTierData300.length > 0) {
+                currentTierData300[currentTierData300.length - 1].total += diff300;
+                let lastWeekAdjustedTotal = currentTierData300[currentTierData300.length - 1].total;
+                currentTierData300[currentTierData300.length - 1].values = splitAndRound(lastWeekAdjustedTotal, 2);
+            }
+            campaignData.tier300.data = currentTierData300;
+
+
+            // --- Calculate for $600K Tier ---
+            let currentTierData600 = [];
+            campaignData.schedule.forEach((item) => {
+                let weeklyTotal = Math.round((item.allocation / 100) * campaignData.tier600.total);
+                let values = splitAndRound(weeklyTotal, 3); // Split into CTV, Spotlight, Runway
+
+                currentTierData600.push({
+                    week: item.week,
+                    date: item.date,
+                    matchup: item.matchup,
+                    total: weeklyTotal,
+                    values: values,
+                    note: ''
+                });
+            });
+            // Ensure sum is exact for $600K tier
+            let currentSum600 = currentTierData600.reduce((sum, item) => sum + item.total, 0);
+            let diff600 = campaignData.tier600.total - currentSum600;
+            if (diff600 !== 0 && currentTierData600.length > 0) {
+                currentTierData600[currentTierData600.length - 1].total += diff600;
+                let lastWeekAdjustedTotal = currentTierData600[currentTierData600.length - 1].total;
+                currentTierData600[currentTierData600.length - 1].values = splitAndRound(lastWeekAdjustedTotal, 3);
+            }
+            campaignData.tier600.data = currentTierData600;
+
+
+            // --- Calculate for $1M Tier ---
+            let currentTierData1000 = [];
+            const ronBudgetTotal = 700000;
+            const hrbtoPerPriorityWeek = 100000; 
+
+            // Filter non-priority weeks from the schedule
+            const nonPriorityWeeksSchedule = campaignData.schedule.filter(item => !campaignData.priorityWeeks.includes(item.week));
+            // Sum of allocation percentages for non-priority weeks
+            const totalNonPriorityAllocationPercentage = nonPriorityWeeksSchedule.reduce((sum, item) => sum + item.allocation, 0);
+
+            let ronAllocationsForNonPriorityWeeks = {}; // Store RON allocations to use for exact summing
+            nonPriorityWeeksSchedule.forEach(item => {
+                // Calculate RON portion for this non-priority week
+                let weeklyRonTotal = Math.round((item.allocation / totalNonPriorityAllocationPercentage) * ronBudgetTotal);
+                ronAllocationsForNonPriorityWeeks[item.week] = weeklyRonTotal;
+            });
+
+            // Adjust the last non-priority week's RON total to ensure the $700K sum is exact
+            let currentRonSum = Object.values(ronAllocationsForNonPriorityWeeks).reduce((a, b) => a + b, 0);
+            let ronAdjustmentDiff = ronBudgetTotal - currentRonSum;
+            if (ronAdjustmentDiff !== 0 && nonPriorityWeeksSchedule.length > 0) {
+                const lastNonPriorityWeekItem = nonPriorityWeeksSchedule[nonPriorityWeeksSchedule.length - 1];
+                ronAllocationsForNonPriorityWeeks[lastNonPriorityWeekItem.week] += ronAdjustmentDiff;
+            }
+
+            campaignData.schedule.forEach((item) => {
+                let ctv = 0;
+                let spotlight = 0;
+                let runway = 0;
+                let hrbtoValue = 0;
+                let note = '';
+                let weeklyTotal = 0;
+
+                if (campaignData.priorityWeeks.includes(item.week)) {
+                    // Priority weeks get only HRBTO
+                    hrbtoValue = hrbtoPerPriorityWeek;
+                    weeklyTotal = hrbtoValue;
+                    note = '+$100K HRBTO';
+                } else {
+                    // Non-priority weeks get RON media
+                    let weeklyRonTotal = ronAllocationsForNonPriorityWeeks[item.week] || 0; // Use adjusted RON total
+                    let ronSplitValues = splitAndRound(weeklyRonTotal, 3); // Split RON into 3 formats
+                    
+                    ctv = ronSplitValues[0];
+                    spotlight = ronSplitValues[1];
+                    runway = ronSplitValues[2];
+                    weeklyTotal = ctv + spotlight + runway; // Sum of the RON parts
+                }
+
+                currentTierData1000.push({
+                    week: item.week,
+                    date: item.date,
+                    matchup: item.matchup,
+                    total: weeklyTotal,
+                    values: [ctv, spotlight, runway, hrbtoValue],
+                    note: note
+                });
+            });
+
+            // Final overall total adjustment for $1M tier to guarantee exact sum
+            let finalSum1000 = currentTierData1000.reduce((sum, item) => sum + item.total, 0);
+            let finalDiff1000 = campaignData.tier1000.total - finalSum1000;
+            
+            if (finalDiff1000 !== 0 && currentTierData1000.length > 0) {
+                // Find the last non-priority week to absorb the overall difference
+                let lastNonPriorityWeekData = currentTierData1000.findLast(data => !campaignData.priorityWeeks.includes(data.week));
+                if (lastNonPriorityWeekData) {
+                    lastNonPriorityWeekData.total += finalDiff1000;
+                    // Re-distribute the updated total into its RON components for that week
+                    let ronSplitValues = splitAndRound(lastNonPriorityWeekData.total, 3);
+                    lastNonPriorityWeekData.values[0] = ronSplitValues[0];
+                    lastNonPriorityWeekData.values[1] = ronSplitValues[1];
+                    lastNonPriorityWeekData.values[2] = ronSplitValues[2];
+                } else {
+                    // Fallback if no non-priority week exists (unlikely given data)
+                    currentTierData1000[currentTierData1000.length - 1].total += finalDiff1000;
+                    // Re-distribute the updated total into its components (might be HRBTO week if no non-priority)
+                    let lastWeekData = currentTierData1000[currentTierData1000.length - 1];
+                    if (!campaignData.priorityWeeks.includes(lastWeekData.week)) {
+                         let ronSplitValues = splitAndRound(lastWeekData.total, 3);
+                         lastWeekData.values[0] = ronSplitValues[0];
+                         lastWeekData.values[1] = ronSplitValues[1];
+                         lastWeekData.values[2] = ronSplitValues[2];
+                    } else { // Adjust HRBTO if last week is priority and no non-priority found.
+                        lastWeekData.values[3] += finalDiff1000;
+                    }
+                }
+            }
+            campaignData.tier1000.data = currentTierData1000;
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            calculateAndPopulateTierData(); // Calculate and populate all tier data on load
+
+            let currentTier = 'tier300';
+            let allocationChart = null;
+
+            const kpiBudgetEl = document.getElementById('kpi-budget');
+            const tableBodyEl = document.getElementById('weekly-schedule-table-body');
+            const formatColHeaders = [
+                document.getElementById('format-col-1'),
+                document.getElementById('format-col-2'),
+                document.getElementById('format-col-3'),
+                document.getElementById('format-col-4')
+            ];
+            const tierButtons = {
+                tier300: document.getElementById('btn-tier300'),
+                tier600: document.getElementById('btn-tier600'),
+                tier1000: document.getElementById('btn-tier1000')
+            };
+
+            function formatCurrency(value) {
+                return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(value);
+            }
+
+            function updateKpiCard() {
+                kpiBudgetEl.textContent = formatCurrency(campaignData[currentTier].total);
+            }
+
+            function updateTable() {
+                const tierData = campaignData[currentTier];
+                tableBodyEl.innerHTML = '';
+                
+                const headers = tierData.formats;
+                formatColHeaders.forEach((col, i) => {
+                    col.textContent = headers[i] || '';
+                    col.style.display = headers[i] ? '' : 'none'; // Hide if no header
+                });
+
+                tierData.data.forEach(weekData => {
+                    const isPriority = campaignData.priorityWeeks.includes(weekData.week);
+                    const row = document.createElement('tr');
+                    if (isPriority) {
+                        row.classList.add('priority-week');
+                    }
+
+                    let matchupText = weekData.matchup;
+                    if (weekData.note) {
+                        matchupText += `<span class="block text-xs font-semibold text-amber-600">${weekData.note}</span>`;
+                    }
+                    
+                    let rowHTML = `
+                        <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-slate-900 sm:pl-6">Wk ${weekData.week}</td>
+                        <td class="whitespace-nowrap px-3 py-4 text-sm text-slate-700">${matchupText}</td>
+                        <td class="whitespace-nowrap px-3 py-4 text-sm font-semibold text-slate-800">${formatCurrency(weekData.total)}</td>
+                    `;
+
+                    headers.forEach((_, i) => {
+                       rowHTML += `<td class="whitespace-nowrap px-3 py-4 text-sm text-slate-600 ${headers[i] ? '' : 'hidden'}">${weekData.values[i] !== undefined ? formatCurrency(weekData.values[i]) : '—'}</td>`;
+                    });
+
+                    row.innerHTML = rowHTML;
+                    tableBodyEl.appendChild(row);
+                });
+            }
+
+            function renderChart() {
+                const ctx = document.getElementById('budgetAllocationChart').getContext('2d');
+                if (allocationChart) {
+                    allocationChart.destroy();
+                }
+
+                allocationChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: campaignData.schedule.map(g => `Wk ${g.week}: ${g.matchup}`),
+                        datasets: [{
+                            label: 'Budget Allocation %',
+                            data: campaignData.schedule.map(g => g.allocation),
+                            backgroundColor: campaignData.schedule.map(g => campaignData.priorityWeeks.includes(g.week) ? '#f59e0b' : '#38bdf8'),
+                            borderColor: campaignData.schedule.map(g => campaignData.priorityWeeks.includes(g.week) ? '#b45309' : '#0ea5e9'),
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const labelText = context.label;
+                                        const maxCharsPerLine = 16;
+                                        if (labelText.length > maxCharsPerLine) {
+                                            let lines = [];
+                                            let currentLine = '';
+                                            labelText.split(' ').forEach(word => {
+                                                if ((currentLine + word).length <= maxCharsPerLine) {
+                                                    currentLine += (currentLine ? ' ' : '') + word;
+                                                } else {
+                                                    lines.push(currentLine);
+                                                    currentLine = word;
+                                                }
+                                            });
+                                            lines.push(currentLine);
+                                            return [
+                                                ...lines,
+                                                `Allocation: ${context.parsed.y}%`
+                                            ];
+                                        }
+                                        return `Allocation: ${context.parsed.y}%`;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Percentage of Total Budget'
+                                }
+                            },
+                            x: {
+                                ticks: {
+                                    autoSkip: true,
+                                    maxRotation: 60,
+                                    minRotation: 60,
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            function render() {
+                Object.values(tierButtons).forEach(btn => btn.classList.remove('active'));
+                tierButtons[currentTier].classList.add('active');
+                updateKpiCard();
+                updateTable();
+            }
+
+            Object.keys(tierButtons).forEach(tierKey => {
+                tierButtons[tierKey].addEventListener('click', () => {
+                    currentTier = tierKey;
+                    render();
+                });
+            });
+
+            // Initial render
+            render();
+            renderChart();
+        });
+    </script>
+</body>
+</html>
