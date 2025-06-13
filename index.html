@@ -214,7 +214,7 @@
                             <li class="flex items-start"><span class="text-amber-500 mr-3 mt-1">✓</span><strong>Media Plan Due:</strong> Monday, June 16 @ noon</li>
                             <li class="flex items-start"><span class="text-amber-500 mr-3 mt-1">✓</span><strong>Format:</strong> Weekly/by-game breakdown</li>
                             <li class="flex items-start"><span class="text-amber-500 mr-3 mt-1">✓</span><strong>Week Structure:</strong> Tuesday start to Thursday end</li>
-                             <li class="flex items-start"><span class="text-amber-500 mr-3 mt-1">✓</span><strong>Note Added Value:</strong> Analytics, creative support, etc.</li>
+                             <li class="flex items-start"><span class="text-amber-500 mr-3 mt-1">✓</span><strong>Note Added Value:</b> Analytics, creative support, etc.</li>
                         </ul>
                     </div>
                 </div>
@@ -243,33 +243,46 @@
                 formats: ['CTV ($233K)', 'Spotlight ($233K)', 'Runway ($233K)', 'HRBTO ($300K)'],
                 data: []
             },
-            // Note: These allocation percentages are from the provided tables and sum to 100%.
-            schedule: [
-                { week: 2, date: '9/11', matchup: 'WAS/GB', allocation: 3.7 },
-                { week: 3, date: '9/18', matchup: 'MIA/BUF', allocation: 3.7 },
-                { week: 4, date: '9/25', matchup: 'SEA/AZ', allocation: 3.7 },
-                { week: 5, date: '10/2', matchup: 'SF/LAR', allocation: 8.1 },
-                { week: 6, date: '10/9', matchup: 'PHI/NYG', allocation: 8.1 },
-                { week: 7, date: '10/16', matchup: 'PIT/CIN', allocation: 6.7 },
-                { week: 8, date: '10/23', matchup: 'MIN/LAC', allocation: 7.4 },
-                { week: 9, date: '10/30', matchup: 'BAL/MIA', allocation: 7.4 },
-                { week: 10, date: '11/6', matchup: 'LV/DEN', allocation: 5.9 },
-                { week: 11, date: '11/13', matchup: 'NYJ/NE', allocation: 8.9 },
-                { week: 12, date: '11/20', matchup: 'BUF/HOU', allocation: 9.6 },
-                { week: 13, date: '11/28', matchup: 'CHI/PHI', allocation: 6.7, priority: true },
-                { week: 14, date: '12/4', matchup: 'DAL/DET', allocation: 7.4 },
-                { week: 15, date: '12/11', matchup: 'ATL/TB', allocation: 8.9 },
-                { week: 16, date: '12/18', matchup: 'LAR/SEA', allocation: 3.7 },
-                { week: 17, date: '12/25', matchup: 'DEN/KC', allocation: 3.7, priority: true },
+            // Original allocation percentages as provided, which sum to 140%
+            originalSchedule: [
+                { week: 2, date: '9/11', matchup: 'WAS/GB', allocation: 5, priority: true },
+                { week: 3, date: '9/18', matchup: 'MIA/BUF', allocation: 5 },
+                { week: 4, date: '9/25', matchup: 'SEA/AZ', allocation: 5 },
+                { week: 5, date: '10/2', matchup: 'SF/LAR', allocation: 11 },
+                { week: 6, date: '10/9', matchup: 'PHI/NYG', allocation: 11 },
+                { week: 7, date: '10/16', matchup: 'PIT/CIN', allocation: 9 },
+                { week: 8, date: '10/23', matchup: 'MIN/LAC', allocation: 10 },
+                { week: 9, date: '10/30', matchup: 'BAL/MIA', allocation: 10 },
+                { week: 10, date: '11/6', matchup: 'LV/DEN', allocation: 8 },
+                { week: 11, date: '11/13', matchup: 'NYJ/NE', allocation: 12 },
+                { week: 12, date: '11/20', matchup: 'BUF/HOU', allocation: 13 },
+                { week: 13, date: '11/28', matchup: 'CHI/PHI', allocation: 9, priority: true },
+                { week: 14, date: '12/4', matchup: 'DAL/DET', allocation: 10 },
+                { week: 15, date: '12/11', matchup: 'ATL/TB', allocation: 12 },
+                { week: 16, date: '12/18', matchup: 'LAR/SEA', allocation: 5 },
+                { week: 17, date: '12/25', matchup: 'DEN/KC', allocation: 5, priority: true },
             ],
             priorityWeeks: [2, 13, 17] 
         };
 
         function calculateAndPopulateTierData() {
+            // Calculate total of original percentages (should be 140)
+            const initialTotalPercentage = campaignData.originalSchedule.reduce((sum, item) => sum + item.allocation, 0); 
+            // Scaling factor to normalize percentages to 100%
+            const scalingFactor = 100 / initialTotalPercentage;
+
+            // Create a normalized schedule based on the original percentages scaled to 100%
+            const normalizedSchedule = campaignData.originalSchedule.map(item => ({
+                ...item,
+                normalizedAllocation: item.allocation * scalingFactor // This new allocation will sum to 100%
+            }));
+            campaignData.schedule = normalizedSchedule; // Update the main schedule to use normalized values
+
+
             // Helper to split a total into n parts, distributing remainder for exact sum
             function splitAndRound(total, parts) {
                 let base = Math.floor(total / parts);
-                let remainder = Math.round(total % parts); // Round remainder for better distribution
+                let remainder = total - (base * parts); // Use actual remainder
                 let values = Array(parts).fill(base);
                 for (let i = 0; i < remainder; i++) {
                     values[i]++;
@@ -277,10 +290,32 @@
                 return values;
             }
 
+            // Function to ensure the total budget for a tier sums exactly
+            function ensureExactSum(tierDataArray, targetTotal) {
+                let currentSum = tierDataArray.reduce((sum, item) => sum + item.total, 0);
+                let diff = targetTotal - currentSum;
+                if (diff !== 0 && tierDataArray.length > 0) {
+                    // Distribute the difference to the last element's total
+                    tierDataArray[tierDataArray.length - 1].total += diff;
+                    
+                    // Re-distribute the formats for the adjusted last week
+                    const lastWeek = tierDataArray[tierDataArray.length - 1];
+                    if (!campaignData.priorityWeeks.includes(lastWeek.week)) { // It's a RON week
+                        let newRonValues = splitAndRound(lastWeek.total, 3); // 3 formats for RON
+                        lastWeek.values[0] = newRonValues[0];
+                        lastWeek.values[1] = newRonValues[1];
+                        lastWeek.values[2] = newRonValues[2];
+                    } else { // It's a priority week, only HRBTO
+                         lastWeek.values[3] = lastWeek.total; // HRBTO is the 4th value
+                    }
+                }
+            }
+
+
             // --- Calculate for $300K Tier ---
             let currentTierData300 = [];
             campaignData.schedule.forEach((item) => {
-                let weeklyTotal = Math.round((item.allocation / 100) * campaignData.tier300.total);
+                let weeklyTotal = Math.round((item.normalizedAllocation / 100) * campaignData.tier300.total);
                 let values = splitAndRound(weeklyTotal, 2); // Split into Runway, Spotlight
                 
                 currentTierData300.push({
@@ -292,21 +327,14 @@
                     note: ''
                 });
             });
-            // Ensure sum is exact for $300K tier
-            let currentSum300 = currentTierData300.reduce((sum, item) => sum + item.total, 0);
-            let diff300 = campaignData.tier300.total - currentSum300;
-            if (diff300 !== 0 && currentTierData300.length > 0) {
-                currentTierData300[currentTierData300.length - 1].total += diff300;
-                let lastWeekAdjustedTotal = currentTierData300[currentTierData300.length - 1].total;
-                currentTierData300[currentTierData300.length - 1].values = splitAndRound(lastWeekAdjustedTotal, 2);
-            }
+            ensureExactSum(currentTierData300, campaignData.tier300.total);
             campaignData.tier300.data = currentTierData300;
 
 
             // --- Calculate for $600K Tier ---
             let currentTierData600 = [];
             campaignData.schedule.forEach((item) => {
-                let weeklyTotal = Math.round((item.allocation / 100) * campaignData.tier600.total);
+                let weeklyTotal = Math.round((item.normalizedAllocation / 100) * campaignData.tier600.total);
                 let values = splitAndRound(weeklyTotal, 3); // Split into CTV, Spotlight, Runway
 
                 currentTierData600.push({
@@ -318,14 +346,7 @@
                     note: ''
                 });
             });
-            // Ensure sum is exact for $600K tier
-            let currentSum600 = currentTierData600.reduce((sum, item) => sum + item.total, 0);
-            let diff600 = campaignData.tier600.total - currentSum600;
-            if (diff600 !== 0 && currentTierData600.length > 0) {
-                currentTierData600[currentTierData600.length - 1].total += diff600;
-                let lastWeekAdjustedTotal = currentTierData600[currentTierData600.length - 1].total;
-                currentTierData600[currentTierData600.length - 1].values = splitAndRound(lastWeekAdjustedTotal, 3);
-            }
+            ensureExactSum(currentTierData600, campaignData.tier600.total);
             campaignData.tier600.data = currentTierData600;
 
 
@@ -334,15 +355,15 @@
             const ronBudgetTotal = 700000;
             const hrbtoPerPriorityWeek = 100000; 
 
-            // Filter non-priority weeks from the schedule
+            // Filter non-priority weeks from the normalized schedule
             const nonPriorityWeeksSchedule = campaignData.schedule.filter(item => !campaignData.priorityWeeks.includes(item.week));
-            // Sum of allocation percentages for non-priority weeks
-            const totalNonPriorityAllocationPercentage = nonPriorityWeeksSchedule.reduce((sum, item) => sum + item.allocation, 0);
+            // Sum of normalized allocation percentages for non-priority weeks
+            const totalNormalizedNonPriorityAllocationPercentage = nonPriorityWeeksSchedule.reduce((sum, item) => sum + item.normalizedAllocation, 0);
 
             let ronAllocationsForNonPriorityWeeks = {}; // Store RON allocations to use for exact summing
             nonPriorityWeeksSchedule.forEach(item => {
-                // Calculate RON portion for this non-priority week
-                let weeklyRonTotal = Math.round((item.allocation / totalNonPriorityAllocationPercentage) * ronBudgetTotal);
+                // Calculate RON portion for this non-priority week based on normalized allocation
+                let weeklyRonTotal = Math.round((item.normalizedAllocation / totalNormalizedNonPriorityAllocationPercentage) * ronBudgetTotal);
                 ronAllocationsForNonPriorityWeeks[item.week] = weeklyRonTotal;
             });
 
@@ -389,34 +410,7 @@
             });
 
             // Final overall total adjustment for $1M tier to guarantee exact sum
-            let finalSum1000 = currentTierData1000.reduce((sum, item) => sum + item.total, 0);
-            let finalDiff1000 = campaignData.tier1000.total - finalSum1000;
-            
-            if (finalDiff1000 !== 0 && currentTierData1000.length > 0) {
-                // Find the last non-priority week to absorb the overall difference
-                let lastNonPriorityWeekData = currentTierData1000.findLast(data => !campaignData.priorityWeeks.includes(data.week));
-                if (lastNonPriorityWeekData) {
-                    lastNonPriorityWeekData.total += finalDiff1000;
-                    // Re-distribute the updated total into its RON components for that week
-                    let ronSplitValues = splitAndRound(lastNonPriorityWeekData.total, 3);
-                    lastNonPriorityWeekData.values[0] = ronSplitValues[0];
-                    lastNonPriorityWeekData.values[1] = ronSplitValues[1];
-                    lastNonPriorityWeekData.values[2] = ronSplitValues[2];
-                } else {
-                    // Fallback if no non-priority week exists (unlikely given data)
-                    currentTierData1000[currentTierData1000.length - 1].total += finalDiff1000;
-                    // Re-distribute the updated total into its components (might be HRBTO week if no non-priority)
-                    let lastWeekData = currentTierData1000[currentTierData1000.length - 1];
-                    if (!campaignData.priorityWeeks.includes(lastWeekData.week)) {
-                         let ronSplitValues = splitAndRound(lastWeekData.total, 3);
-                         lastWeekData.values[0] = ronSplitValues[0];
-                         lastWeekData.values[1] = ronSplitValues[1];
-                         lastWeekData.values[2] = ronSplitValues[2];
-                    } else { // Adjust HRBTO if last week is priority and no non-priority found.
-                        lastWeekData.values[3] += finalDiff1000;
-                    }
-                }
-            }
+            ensureExactSum(currentTierData1000, campaignData.tier1000.total);
             campaignData.tier1000.data = currentTierData1000;
         }
 
@@ -497,7 +491,7 @@
                         labels: campaignData.schedule.map(g => `Wk ${g.week}: ${g.matchup}`),
                         datasets: [{
                             label: 'Budget Allocation %',
-                            data: campaignData.schedule.map(g => g.allocation),
+                            data: campaignData.schedule.map(g => g.normalizedAllocation), // Use normalized for chart
                             backgroundColor: campaignData.schedule.map(g => campaignData.priorityWeeks.includes(g.week) ? '#f59e0b' : '#38bdf8'),
                             borderColor: campaignData.schedule.map(g => campaignData.priorityWeeks.includes(g.week) ? '#b45309' : '#0ea5e9'),
                             borderWidth: 1
@@ -529,10 +523,10 @@
                                             lines.push(currentLine);
                                             return [
                                                 ...lines,
-                                                `Allocation: ${context.parsed.y}%`
+                                                `Allocation: ${context.parsed.y.toFixed(1)}%` // Show one decimal for normalized percentage
                                             ];
                                         }
-                                        return `Allocation: ${context.parsed.y}%`;
+                                        return `Allocation: ${context.parsed.y.toFixed(1)}%`; // Show one decimal for normalized percentage
                                     }
                                 }
                             }
