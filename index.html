@@ -10,11 +10,12 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- Chosen Palette: Slate Neutrals & Amber Accent -->
-    <!-- Application Structure Plan: A dashboard-style SPA is used to manage the complexity of the three budget tiers. The core interaction is a set of buttons to toggle between tiers ($300K, $600K, $1M). This action dynamically updates a KPI card section, a main budget allocation bar chart, and a detailed weekly breakdown table. This structure was chosen to allow for direct, focused comparison between the tiers without overwhelming the user with all the data at once. Static information like strategic goals and measurement requirements are placed in separate, clear sections below the interactive dashboard, as they don't change per tier. This creates a logical hierarchy: select a scenario, see the financial impact, then review the constant strategic context. -->
+    <!-- Application Structure Plan: A dashboard-style SPA is used to manage the complexity of the three budget tiers. The core interaction is a set of buttons to toggle between tiers ($300K, $600K, $1M). This action dynamically updates a KPI card section, a main budget allocation bar chart, and a detailed weekly breakdown table. Additionally, new toggle buttons allow switching between a detailed weekly breakdown view and an overall campaign summary view, enhancing exploration of budget distribution. Static information like strategic goals and measurement requirements are placed in separate, clear sections below the interactive dashboard, as they don't change per tier. This creates a logical hierarchy: select a scenario, switch view, see the financial impact, then review the constant strategic context. -->
     <!-- Visualization & Content Choices: 
         - Report Info: Budget Tiers -> Goal: Compare/Select -> Viz: Button Group -> Interaction: Click to update all dynamic elements -> Justification: The primary user task is to evaluate different budget scenarios. This makes that the central control. -> Method: JS state change.
         - Report Info: Weekly Budget % -> Goal: Compare/Change -> Viz: Bar Chart -> Interaction: Re-renders on tier selection -> Justification: A bar chart provides an instant visual feel for the campaign's spending rhythm and priorities across the season. -> Library: Chart.js/Canvas.
-        - Report Info: Detailed Budget Tables -> Goal: Inform/Organize -> Viz: HTML Table -> Interaction: Table body is rebuilt on tier selection -> Justification: Tables are the clearest way to present precise financial data. Dynamic rebuilding keeps the view clean. -> Method: JS DOM manipulation.
+        - Report Info: Detailed Budget Tables (Weekly) -> Goal: Inform/Organize/Compare -> Viz: HTML Table with Grand Totals & Percentage Column -> Interaction: Table body rebuilt on tier/view selection -> Justification: Tables present precise financial data. Grand totals confirm sums. Percentage column provides immediate context. -> Method: JS DOM manipulation.
+        - Report Info: Overall Allocation Summary (Total View) -> Goal: Inform/Summarize -> Viz: Simple HTML Table -> Interaction: Table visibility toggled by view selection -> Justification: Provides a quick, aggregated overview of total spend per unit across the entire campaign, suitable for top-level review. -> Method: JS DOM manipulation/visibility.
         - Report Info: KPIs (Total Budget, Due Date) -> Goal: Inform -> Viz: Styled "Stat Cards" -> Interaction: Budget value updates on tier selection -> Justification: High-visibility summary for at-a-glance information. -> Method: JS textContent update.
         - Report Info: Strategic Goals, Audiences, etc. -> Goal: Inform -> Viz: Multi-column Text Layout -> Interaction: Static -> Justification: Organizes static but critical context into digestible, themed sections. -> Method: HTML/Tailwind.
     -->
@@ -39,15 +40,15 @@
                 max-height: 60vh;
             }
         }
-        .btn-tier {
+        .btn-tier, .btn-view {
             transition: all 0.2s ease-in-out;
         }
-        .btn-tier.active {
+        .btn-tier.active, .btn-view.active {
             background-color: #f59e0b;
             color: #ffffff;
             box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
         }
-        .btn-tier:not(.active) {
+        .btn-tier:not(.active), .btn-view:not(.active) {
             background-color: #ffffff;
             color: #374151;
             border: 1px solid #d1d5db;
@@ -72,7 +73,7 @@
         <main>
             <div id="dashboard-controls" class="mb-8">
                 <p class="text-md font-semibold text-slate-700 mb-3">Select a Budget Tier to Explore:</p>
-                <div class="flex flex-wrap gap-3">
+                <div class="flex flex-wrap gap-3 mb-6">
                     <button id="btn-tier300" class="btn-tier font-semibold py-2 px-6 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500">
                         $300K
                     </button>
@@ -81,6 +82,16 @@
                     </button>
                     <button id="btn-tier1000" class="btn-tier font-semibold py-2 px-6 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500">
                         $1,000,000
+                    </button>
+                </div>
+
+                <p class="text-md font-semibold text-slate-700 mb-3">Select View Type:</p>
+                <div class="flex flex-wrap gap-3">
+                    <button id="btn-view-weekly" class="btn-view font-semibold py-2 px-6 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500">
+                        Weekly Breakdown
+                    </button>
+                    <button id="btn-view-summary" class="btn-view font-semibold py-2 px-6 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500">
+                        Overall Summary
                     </button>
                 </div>
             </div>
@@ -116,7 +127,7 @@
             
             <section id="table-section" class="bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-slate-100 mb-10">
                 <h2 class="text-xl font-bold text-slate-800 mb-1">Detailed Weekly Budget Breakdown</h2>
-                 <p class="text-slate-600 mb-4">Explore the specific budget allocation for each week based on the selected tier. Priority games, including the Kickoff, Black Friday, and Christmas Day games, are highlighted for emphasis.</p>
+                 <p class="text-slate-600 mb-4">Explore the specific budget allocation for each week based on the selected tier. Priority games, including the Kickoff, Black Friday, and Christmas Day games, are highlighted for emphasis. A grand total row confirms the overall tier budget, and each week includes its percentage of the total season spend.</p>
                 <div class="overflow-x-auto">
                     <table class="min-w-full divide-y divide-slate-200">
                         <thead class="bg-slate-50">
@@ -124,6 +135,7 @@
                                 <th scope="col" class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-slate-900 sm:pl-6">Week</th>
                                 <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-slate-900">Matchup</th>
                                 <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-slate-900">Weekly Total</th>
+                                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-slate-900">% of Season</th>
                                 <th id="format-col-1" scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-slate-900"></th>
                                 <th id="format-col-2" scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-slate-900"></th>
                                 <th id="format-col-3" scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-slate-900"></th>
@@ -132,6 +144,33 @@
                         </thead>
                         <tbody id="weekly-schedule-table-body" class="divide-y divide-slate-200 bg-white">
                         </tbody>
+                        <tfoot id="weekly-schedule-table-footer" class="bg-slate-100">
+                            <!-- Footer content will be injected here -->
+                        </tfoot>
+                    </table>
+                </div>
+            </section>
+
+            <section id="summary-section" class="bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-slate-100 mb-10 hidden">
+                <h2 class="text-xl font-bold text-slate-800 mb-1">Overall Allocation Summary</h2>
+                <p class="text-slate-600 mb-4">This table provides a high-level overview of the total budget allocated to each media format across the entire campaign for the selected tier, along with the grand total for the season.</p>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-slate-200">
+                        <thead class="bg-slate-50">
+                            <tr>
+                                <th scope="col" class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-slate-900 sm:pl-6">Format</th>
+                                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-slate-900">Total Spend</th>
+                            </tr>
+                        </thead>
+                        <tbody id="summary-table-body" class="divide-y divide-slate-200 bg-white">
+                            <!-- Summary content will be injected here -->
+                        </tbody>
+                        <tfoot class="bg-slate-100">
+                            <tr>
+                                <th scope="col" class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-slate-900 sm:pl-6">Grand Total</th>
+                                <th id="summary-grand-total" scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-slate-900"></th>
+                            </tr>
+                        </tfoot>
                     </table>
                 </div>
             </section>
@@ -282,7 +321,7 @@
             // Helper to split a total into n parts, distributing remainder for exact sum
             function splitAndRound(total, parts) {
                 let base = Math.floor(total / parts);
-                let remainder = total - (base * parts); // Use actual remainder
+                let remainder = total - (base * parts); 
                 let values = Array(parts).fill(base);
                 for (let i = 0; i < remainder; i++) {
                     values[i]++;
@@ -292,14 +331,26 @@
 
             // Function to ensure the total budget for a tier sums exactly
             function ensureExactSum(tierDataArray, targetTotal) {
-                let currentSum = tierDataArray.reduce((sum, item) => sum + item.total, 0);
+                let currentSum = tierDataArray.reduce((sum, item) => item.total !== undefined ? sum + item.total : sum, 0);
                 let diff = targetTotal - currentSum;
                 if (diff !== 0 && tierDataArray.length > 0) {
-                    // Distribute the difference to the last element's total
-                    tierDataArray[tierDataArray.length - 1].total += diff;
+                    let lastAdjustedIndex = -1;
+                    // Find the last week that is NOT a priority week if possible to absorb the difference in RON
+                    for(let i = tierDataArray.length - 1; i >= 0; i--) {
+                        if (!campaignData.priorityWeeks.includes(tierDataArray[i].week)) {
+                            lastAdjustedIndex = i;
+                            break;
+                        }
+                    }
+
+                    if (lastAdjustedIndex === -1) { // If all weeks are priority, adjust the very last week
+                        lastAdjustedIndex = tierDataArray.length - 1;
+                    }
+                    
+                    tierDataArray[lastAdjustedIndex].total += diff;
                     
                     // Re-distribute the formats for the adjusted last week
-                    const lastWeek = tierDataArray[tierDataArray.length - 1];
+                    const lastWeek = tierDataArray[lastAdjustedIndex];
                     if (!campaignData.priorityWeeks.includes(lastWeek.week)) { // It's a RON week
                         let newRonValues = splitAndRound(lastWeek.total, 3); // 3 formats for RON
                         lastWeek.values[0] = newRonValues[0];
@@ -355,25 +406,21 @@
             const ronBudgetTotal = 700000;
             const hrbtoPerPriorityWeek = 100000; 
 
-            // Filter non-priority weeks from the normalized schedule
-            const nonPriorityWeeksSchedule = campaignData.schedule.filter(item => !campaignData.priorityWeeks.includes(item.week));
-            // Sum of normalized allocation percentages for non-priority weeks
-            const totalNormalizedNonPriorityAllocationPercentage = nonPriorityWeeksSchedule.reduce((sum, item) => sum + item.normalizedAllocation, 0);
-
-            let ronAllocationsForNonPriorityWeeks = {}; // Store RON allocations to use for exact summing
-            nonPriorityWeeksSchedule.forEach(item => {
-                // Calculate RON portion for this non-priority week based on normalized allocation
-                let weeklyRonTotal = Math.round((item.normalizedAllocation / totalNormalizedNonPriorityAllocationPercentage) * ronBudgetTotal);
-                ronAllocationsForNonPriorityWeeks[item.week] = weeklyRonTotal;
+            // Calculate RON allocation for all 16 weeks based on normalized allocation
+            let ronAllocationsForAllWeeks = {};
+            campaignData.schedule.forEach(item => {
+                let weeklyRonTotal = Math.round((item.normalizedAllocation / 100) * ronBudgetTotal);
+                ronAllocationsForAllWeeks[item.week] = weeklyRonTotal;
             });
 
-            // Adjust the last non-priority week's RON total to ensure the $700K sum is exact
-            let currentRonSum = Object.values(ronAllocationsForNonPriorityWeeks).reduce((a, b) => a + b, 0);
+            // Adjust the last week's RON total to ensure the $700K sum is exact
+            let currentRonSum = Object.values(ronAllocationsForAllWeeks).reduce((a, b) => a + b, 0);
             let ronAdjustmentDiff = ronBudgetTotal - currentRonSum;
-            if (ronAdjustmentDiff !== 0 && nonPriorityWeeksSchedule.length > 0) {
-                const lastNonPriorityWeekItem = nonPriorityWeeksSchedule[nonPriorityWeeksSchedule.length - 1];
-                ronAllocationsForNonPriorityWeeks[lastNonPriorityWeekItem.week] += ronAdjustmentDiff;
+            if (ronAdjustmentDiff !== 0 && campaignData.schedule.length > 0) {
+                const lastWeekItem = campaignData.schedule[campaignData.schedule.length - 1];
+                ronAllocationsForAllWeeks[lastWeekItem.week] += ronAdjustmentDiff;
             }
+
 
             campaignData.schedule.forEach((item) => {
                 let ctv = 0;
@@ -383,21 +430,21 @@
                 let note = '';
                 let weeklyTotal = 0;
 
+                // RON media is now distributed across ALL games, including priority games
+                let weeklyRonTotal = ronAllocationsForAllWeeks[item.week] || 0;
+                let ronSplitValues = splitAndRound(weeklyRonTotal, 3);
+                
+                ctv = ronSplitValues[0];
+                spotlight = ronSplitValues[1];
+                runway = ronSplitValues[2];
+
                 if (campaignData.priorityWeeks.includes(item.week)) {
-                    // Priority weeks get only HRBTO
+                    // Priority weeks also get HRBTO in addition to RON
                     hrbtoValue = hrbtoPerPriorityWeek;
-                    weeklyTotal = hrbtoValue;
                     note = '+$100K HRBTO';
-                } else {
-                    // Non-priority weeks get RON media
-                    let weeklyRonTotal = ronAllocationsForNonPriorityWeeks[item.week] || 0; // Use adjusted RON total
-                    let ronSplitValues = splitAndRound(weeklyRonTotal, 3); // Split RON into 3 formats
-                    
-                    ctv = ronSplitValues[0];
-                    spotlight = ronSplitValues[1];
-                    runway = ronSplitValues[2];
-                    weeklyTotal = ctv + spotlight + runway; // Sum of the RON parts
                 }
+                
+                weeklyTotal = ctv + spotlight + runway + hrbtoValue;
 
                 currentTierData1000.push({
                     week: item.week,
@@ -418,10 +465,17 @@
             calculateAndPopulateTierData(); // Calculate and populate all tier data on load
 
             let currentTier = 'tier300';
+            let currentView = 'weekly'; // 'weekly' or 'summary'
             let allocationChart = null;
 
             const kpiBudgetEl = document.getElementById('kpi-budget');
+            const tableSectionEl = document.getElementById('table-section');
             const tableBodyEl = document.getElementById('weekly-schedule-table-body');
+            const tableFooterEl = document.getElementById('weekly-schedule-table-footer');
+            const summarySectionEl = document.getElementById('summary-section');
+            const summaryTableBodyEl = document.getElementById('summary-table-body');
+            const summaryGrandTotalEl = document.getElementById('summary-grand-total');
+
             const formatColHeaders = [
                 document.getElementById('format-col-1'),
                 document.getElementById('format-col-2'),
@@ -433,6 +487,10 @@
                 tier600: document.getElementById('btn-tier600'),
                 tier1000: document.getElementById('btn-tier1000')
             };
+            const viewButtons = {
+                weekly: document.getElementById('btn-view-weekly'),
+                summary: document.getElementById('btn-view-summary')
+            };
 
             function formatCurrency(value) {
                 return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(value);
@@ -442,9 +500,10 @@
                 kpiBudgetEl.textContent = formatCurrency(campaignData[currentTier].total);
             }
 
-            function updateTable() {
+            function updateWeeklyTable() {
                 const tierData = campaignData[currentTier];
                 tableBodyEl.innerHTML = '';
+                tableFooterEl.innerHTML = '';
                 
                 const headers = tierData.formats;
                 formatColHeaders.forEach((col, i) => {
@@ -452,7 +511,10 @@
                     col.style.display = headers[i] ? '' : 'none'; // Hide if no header
                 });
 
-                tierData.data.forEach(weekData => {
+                let grandTotal = 0;
+                let grandFormatTotals = Array(headers.length).fill(0);
+
+                tierData.data.forEach((weekData, index) => {
                     const isPriority = campaignData.priorityWeeks.includes(weekData.week);
                     const row = document.createElement('tr');
                     if (isPriority) {
@@ -464,19 +526,65 @@
                         matchupText += `<span class="block text-xs font-semibold text-amber-600">${weekData.note}</span>`;
                     }
                     
+                    // Calculate percentage of total season spend for this week
+                    const percentageOfSeason = (weekData.total / tierData.total) * 100;
+
                     let rowHTML = `
                         <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-slate-900 sm:pl-6">Wk ${weekData.week}</td>
                         <td class="whitespace-nowrap px-3 py-4 text-sm text-slate-700">${matchupText}</td>
                         <td class="whitespace-nowrap px-3 py-4 text-sm font-semibold text-slate-800">${formatCurrency(weekData.total)}</td>
+                        <td class="whitespace-nowrap px-3 py-4 text-sm text-slate-600">${percentageOfSeason.toFixed(1)}%</td>
                     `;
 
-                    headers.forEach((_, i) => {
-                       rowHTML += `<td class="whitespace-nowrap px-3 py-4 text-sm text-slate-600 ${headers[i] ? '' : 'hidden'}">${weekData.values[i] !== undefined ? formatCurrency(weekData.values[i]) : '—'}</td>`;
+                    headers.forEach((header, i) => {
+                       rowHTML += `<td class="whitespace-nowrap px-3 py-4 text-sm text-slate-600 ${header ? '' : 'hidden'}">${weekData.values[i] !== undefined ? formatCurrency(weekData.values[i]) : '—'}</td>`;
+                       if (weekData.values[i] !== undefined) {
+                           grandFormatTotals[i] += weekData.values[i];
+                       }
                     });
 
+                    grandTotal += weekData.total;
                     row.innerHTML = rowHTML;
                     tableBodyEl.appendChild(row);
                 });
+
+                // Add grand totals row
+                const footerRow = document.createElement('tr');
+                let footerHTML = `
+                    <th scope="row" colspan="2" class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-slate-900 sm:pl-6">Grand Total</th>
+                    <th class="whitespace-nowrap px-3 py-3.5 text-left text-sm font-semibold text-slate-900">${formatCurrency(grandTotal)}</th>
+                    <th class="whitespace-nowrap px-3 py-3.5 text-left text-sm font-semibold text-slate-900">100.0%</th>
+                `;
+                headers.forEach((header, i) => {
+                    footerHTML += `<th class="whitespace-nowrap px-3 py-3.5 text-left text-sm font-semibold text-slate-900 ${header ? '' : 'hidden'}">${formatCurrency(grandFormatTotals[i])}</th>`;
+                });
+                footerRow.innerHTML = footerHTML;
+                tableFooterEl.appendChild(footerRow);
+            }
+
+            function updateSummaryTable() {
+                const tierData = campaignData[currentTier];
+                summaryTableBodyEl.innerHTML = '';
+                
+                let grandTotalFormats = Array(tierData.formats.length).fill(0);
+                
+                tierData.data.forEach(weekData => {
+                    weekData.values.forEach((value, i) => {
+                        if (grandTotalFormats[i] !== undefined) { // Check if the format column exists for this tier
+                            grandTotalFormats[i] += value;
+                        }
+                    });
+                });
+
+                tierData.formats.forEach((formatName, i) => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-slate-900 sm:pl-6">${formatName}</td>
+                        <td class="whitespace-nowrap px-3 py-4 text-sm text-slate-700">${formatCurrency(grandTotalFormats[i] || 0)}</td>
+                    `;
+                    summaryTableBodyEl.appendChild(row);
+                });
+                summaryGrandTotalEl.textContent = formatCurrency(tierData.total);
             }
 
             function renderChart() {
@@ -491,7 +599,7 @@
                         labels: campaignData.schedule.map(g => `Wk ${g.week}: ${g.matchup}`),
                         datasets: [{
                             label: 'Budget Allocation %',
-                            data: campaignData.schedule.map(g => g.normalizedAllocation), // Use normalized for chart
+                            data: campaignData.schedule.map(g => g.normalizedAllocation), 
                             backgroundColor: campaignData.schedule.map(g => campaignData.priorityWeeks.includes(g.week) ? '#f59e0b' : '#38bdf8'),
                             borderColor: campaignData.schedule.map(g => campaignData.priorityWeeks.includes(g.week) ? '#b45309' : '#0ea5e9'),
                             borderWidth: 1
@@ -523,10 +631,10 @@
                                             lines.push(currentLine);
                                             return [
                                                 ...lines,
-                                                `Allocation: ${context.parsed.y.toFixed(1)}%` // Show one decimal for normalized percentage
+                                                `Allocation: ${context.parsed.y.toFixed(1)}%` 
                                             ];
                                         }
-                                        return `Allocation: ${context.parsed.y.toFixed(1)}%`; // Show one decimal for normalized percentage
+                                        return `Allocation: ${context.parsed.y.toFixed(1)}%`; 
                                     }
                                 }
                             }
@@ -554,8 +662,21 @@
             function render() {
                 Object.values(tierButtons).forEach(btn => btn.classList.remove('active'));
                 tierButtons[currentTier].classList.add('active');
+
+                Object.values(viewButtons).forEach(btn => btn.classList.remove('active'));
+                viewButtons[currentView].classList.add('active');
+
                 updateKpiCard();
-                updateTable();
+                if (currentView === 'weekly') {
+                    tableSectionEl.classList.remove('hidden');
+                    summarySectionEl.classList.add('hidden');
+                    updateWeeklyTable();
+                } else {
+                    tableSectionEl.classList.add('hidden');
+                    summarySectionEl.classList.remove('hidden');
+                    updateSummaryTable();
+                }
+                renderChart();
             }
 
             Object.keys(tierButtons).forEach(tierKey => {
@@ -565,9 +686,15 @@
                 });
             });
 
+            Object.keys(viewButtons).forEach(viewKey => {
+                viewButtons[viewKey].addEventListener('click', () => {
+                    currentView = viewKey;
+                    render();
+                });
+            });
+
             // Initial render
             render();
-            renderChart();
         });
     </script>
 </body>
