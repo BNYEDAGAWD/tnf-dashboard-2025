@@ -304,6 +304,11 @@
             priorityWeeks: [2, 13, 17] 
         };
 
+        // New helper function to round to the nearest 500
+        function roundToNearest500(num) {
+            return Math.round(num / 500) * 500;
+        }
+
         function calculateAndPopulateTierData() {
             // Calculate total of original percentages (should be 140)
             const initialTotalPercentage = campaignData.originalSchedule.reduce((sum, item) => sum + item.allocation, 0); 
@@ -318,46 +323,105 @@
             campaignData.schedule = normalizedSchedule; // Update the main schedule to use normalized values
 
 
-            // Helper to split a total into n parts, distributing remainder for exact sum
-            function splitAndRound(total, parts) {
-                let base = Math.floor(total / parts);
-                let remainder = total - (base * parts); 
-                let values = Array(parts).fill(base);
-                for (let i = 0; i < remainder; i++) {
-                    values[i]++;
+            // Helper to split a total into n parts, distributing remainder for exact sum while rounding
+            function splitAndRoundTo500(total, parts) {
+                if (parts === 0) return Array(0).fill(0);
+                
+                let preciseValues = Array(parts).fill(0);
+                for (let i = 0; i < parts; i++) {
+                    preciseValues[i] = total / parts; // Start with precise division
                 }
-                return values;
+
+                let roundedValues = preciseValues.map(v => roundToNearest500(v));
+                let roundedSum = roundedValues.reduce((s, v) => s + v, 0);
+                let diff = total - roundedSum;
+
+                // Distribute the remaining 'diff' in chunks of 500
+                // This loop ensures the sum of rounded values exactly equals the target 'total'
+                // while keeping individual values as close to multiples of 500 as possible.
+                for (let i = 0; i < roundedValues.length && diff !== 0; i++) {
+                    if (diff > 0) {
+                        roundedValues[i] += 500;
+                        diff -= 500;
+                    } else if (diff < 0) {
+                        roundedValues[i] -= 500;
+                        diff += 500;
+                    }
+                    if (i === roundedValues.length - 1 && diff !== 0) { // If last item and diff still exists, restart from beginning
+                         i = -1; // -1 because it will be incremented to 0 in the next loop iteration
+                    }
+                }
+                return roundedValues;
             }
 
-            // Function to ensure the total budget for a tier sums exactly
-            function ensureExactSum(tierDataArray, targetTotal) {
-                let currentSum = tierDataArray.reduce((sum, item) => item.total !== undefined ? sum + item.total : sum, 0);
+            // Function to ensure the total budget for a tier sums exactly and maintains 500 granularity
+            function ensureExactSumAnd500Granularity(tierDataArray, targetTotal, formatParts) {
+                let currentSum = tierDataArray.reduce((sum, item) => sum + item.total, 0);
                 let diff = targetTotal - currentSum;
-                if (diff !== 0 && tierDataArray.length > 0) {
-                    let lastAdjustedIndex = -1;
-                    // Find the last week that is NOT a priority week if possible to absorb the difference in RON
-                    for(let i = tierDataArray.length - 1; i >= 0; i--) {
-                        if (!campaignData.priorityWeeks.includes(tierDataArray[i].week)) {
-                            lastAdjustedIndex = i;
-                            break;
+                
+                // Convert diff to number of 500-unit adjustments
+                let adjustmentsNeeded = Math.round(diff / 500);
+
+                // Distribute adjustments by iterating through the array, prioritizing non-priority weeks for RON adjustments
+                let adjustedCount = 0;
+                for (let i = 0; i < tierDataArray.length && adjustedCount < Math.abs(adjustmentsNeeded); i++) {
+                    const item = tierDataArray[i];
+                    
+                    // Only adjust RON components for non-priority weeks or if it's an HRBTO week but can still take RON adjustment
+                    if (!campaignData.priorityWeeks.includes(item.week) || (formatParts === 4 && item.values.length === 4 && item.values[0] > 0)) {
+                        let adjustmentStep = 0;
+                        if (adjustmentsNeeded > 0) {
+                            adjustmentStep = 500; // Add 500
+                        } else if (adjustmentsNeeded < 0) {
+                            // Ensure we don't make the total negative
+                            if (item.total >= 500) { 
+                                adjustmentStep = -500; // Subtract 500
+                            } else {
+                                continue; // Skip if we can't subtract 500 without going negative
+                            }
+                        } else {
+                            break; // adjustmentsNeeded is 0
+                        }
+                        
+                        item.total += adjustmentStep;
+                        if (adjustmentsNeeded > 0) adjustmentsNeeded--; else adjustmentsNeeded++;
+                        adjustedCount++;
+
+                        // Re-split/re-round internal values based on new total
+                        if (!campaignData.priorityWeeks.includes(item.week) || (formatParts === 4 && item.values.length === 4)) {
+                            // Handle RON components
+                            let newRonTotal = item.total - (formatParts === 4 && campaignData.priorityWeeks.includes(item.week) ? item.values[3] : 0);
+                            let ronSplitValues = splitAndRoundTo500(newRonTotal, 3); // 3 formats for RON
+                            item.values[0] = ronSplitValues[0];
+                            item.values[1] = ronSplitValues[1];
+                            item.values[2] = ronSplitValues[2];
+                            // If it's a 1M priority week, ensure HRBTO is still its original value
+                            if (formatParts === 4 && campaignData.priorityWeeks.includes(item.week)) {
+                                item.values[3] = hrbtoPerPriorityWeek;
+                            }
                         }
                     }
-
-                    if (lastAdjustedIndex === -1) { // If all weeks are priority, adjust the very last week
-                        lastAdjustedIndex = tierDataArray.length - 1;
+                    // Loop back if needed to distribute all adjustments
+                    if (i === tierDataArray.length - 1 && adjustmentsNeeded !== 0) {
+                        i = -1; // Reset i to -1, it becomes 0 in next iteration
                     }
+                }
+
+                // Final check to ensure the sum is exactly targetTotal after adjustments
+                let finalCheckSum = tierDataArray.reduce((sum, item) => sum + item.total, 0);
+                let finalDiff = targetTotal - finalCheckSum;
+                if (finalDiff !== 0 && tierDataArray.length > 0) {
+                    const lastItem = tierDataArray[tierDataArray.length - 1];
+                    lastItem.total += finalDiff; // Apply any residual diff to the last item
                     
-                    tierDataArray[lastAdjustedIndex].total += diff;
-                    
-                    // Re-distribute the formats for the adjusted last week
-                    const lastWeek = tierDataArray[lastAdjustedIndex];
-                    if (!campaignData.priorityWeeks.includes(lastWeek.week)) { // It's a RON week
-                        let newRonValues = splitAndRound(lastWeek.total, 3); // 3 formats for RON
-                        lastWeek.values[0] = newRonValues[0];
-                        lastWeek.values[1] = newRonValues[1];
-                        lastWeek.values[2] = newRonValues[2];
-                    } else { // It's a priority week, only HRBTO
-                         lastWeek.values[3] = lastWeek.total; // HRBTO is the 4th value
+                    // Re-split/re-round internal values for the last adjusted total
+                    if (!campaignData.priorityWeeks.includes(lastItem.week) || formatParts !== 4) { // RON week or not 1M tier
+                        lastItem.values = splitAndRoundTo500(lastItem.total, lastItem.values.length);
+                    } else if (formatParts === 4 && campaignData.priorityWeeks.includes(lastItem.week)) { // 1M tier priority week
+                        lastItem.values[3] = lastItem.total; // HRBTO takes the full total for priority weeks in 1M tier
+                        lastItem.values[0] = 0; // CTV
+                        lastItem.values[1] = 0; // Spotlight
+                        lastItem.values[2] = 0; // Runway
                     }
                 }
             }
@@ -366,38 +430,41 @@
             // --- Calculate for $300K Tier ---
             let currentTierData300 = [];
             campaignData.schedule.forEach((item) => {
-                let weeklyTotal = Math.round((item.normalizedAllocation / 100) * campaignData.tier300.total);
-                let values = splitAndRound(weeklyTotal, 2); // Split into Runway, Spotlight
+                let weeklyTotalRaw = (item.normalizedAllocation / 100) * campaignData.tier300.total;
+                let weeklyTotalRounded = roundToNearest500(weeklyTotalRaw);
+                
+                let values = splitAndRoundTo500(weeklyTotalRounded, 2); // Split into Runway, Spotlight
                 
                 currentTierData300.push({
                     week: item.week,
                     date: item.date,
                     matchup: item.matchup,
-                    total: weeklyTotal, 
+                    total: weeklyTotalRounded, 
                     values: values,
                     note: ''
                 });
             });
-            ensureExactSum(currentTierData300, campaignData.tier300.total);
+            ensureExactSumAnd500Granularity(currentTierData300, campaignData.tier300.total, 2);
             campaignData.tier300.data = currentTierData300;
 
 
             // --- Calculate for $600K Tier ---
             let currentTierData600 = [];
             campaignData.schedule.forEach((item) => {
-                let weeklyTotal = Math.round((item.normalizedAllocation / 100) * campaignData.tier600.total);
-                let values = splitAndRound(weeklyTotal, 3); // Split into CTV, Spotlight, Runway
+                let weeklyTotalRaw = (item.normalizedAllocation / 100) * campaignData.tier600.total;
+                let weeklyTotalRounded = roundToNearest500(weeklyTotalRaw);
+                let values = splitAndRoundTo500(weeklyTotalRounded, 3); // Split into CTV, Spotlight, Runway
 
                 currentTierData600.push({
                     week: item.week,
                     date: item.date,
                     matchup: item.matchup,
-                    total: weeklyTotal,
+                    total: weeklyTotalRounded,
                     values: values,
                     note: ''
                 });
             });
-            ensureExactSum(currentTierData600, campaignData.tier600.total);
+            ensureExactSumAnd500Granularity(currentTierData600, campaignData.tier600.total, 3);
             campaignData.tier600.data = currentTierData600;
 
 
@@ -409,16 +476,24 @@
             // Calculate RON allocation for all 16 weeks based on normalized allocation
             let ronAllocationsForAllWeeks = {};
             campaignData.schedule.forEach(item => {
-                let weeklyRonTotal = Math.round((item.normalizedAllocation / 100) * ronBudgetTotal);
-                ronAllocationsForAllWeeks[item.week] = weeklyRonTotal;
+                let weeklyRonTotalRaw = (item.normalizedAllocation / 100) * ronBudgetTotal;
+                let weeklyRonTotalRounded = roundToNearest500(weeklyRonTotalRaw);
+                ronAllocationsForAllWeeks[item.week] = weeklyRonTotalRounded;
             });
 
-            // Adjust the last week's RON total to ensure the $700K sum is exact
+            // Adjust the total RON budget to ensure $700K is exact after rounding individual weekly allocations
             let currentRonSum = Object.values(ronAllocationsForAllWeeks).reduce((a, b) => a + b, 0);
             let ronAdjustmentDiff = ronBudgetTotal - currentRonSum;
             if (ronAdjustmentDiff !== 0 && campaignData.schedule.length > 0) {
-                const lastWeekItem = campaignData.schedule[campaignData.schedule.length - 1];
-                ronAllocationsForAllWeeks[lastWeekItem.week] += ronAdjustmentDiff;
+                // Find a non-priority week to absorb this diff to maintain HRBTO integrity
+                let nonPriorityWeeks = campaignData.schedule.filter(item => !campaignData.priorityWeeks.includes(item.week));
+                if (nonPriorityWeeks.length > 0) {
+                    const lastNonPriorityWeekItem = nonPriorityWeeks[nonPriorityWeeks.length - 1];
+                    ronAllocationsForAllWeeks[lastNonPriorityWeekItem.week] += ronAdjustmentDiff;
+                } else { // Fallback if all weeks are priority, adjust last one
+                     const lastWeekItem = campaignData.schedule[campaignData.schedule.length - 1];
+                     ronAllocationsForAllWeeks[lastWeekItem.week] += ronAdjustmentDiff;
+                }
             }
 
 
@@ -432,7 +507,7 @@
 
                 // RON media is now distributed across ALL games, including priority games
                 let weeklyRonTotal = ronAllocationsForAllWeeks[item.week] || 0;
-                let ronSplitValues = splitAndRound(weeklyRonTotal, 3);
+                let ronSplitValues = splitAndRoundTo500(weeklyRonTotal, 3);
                 
                 ctv = ronSplitValues[0];
                 spotlight = ronSplitValues[1];
@@ -440,7 +515,7 @@
 
                 if (campaignData.priorityWeeks.includes(item.week)) {
                     // Priority weeks also get HRBTO in addition to RON
-                    hrbtoValue = hrbtoPerPriorityWeek;
+                    hrbtoValue = hrbtoPerPriorityWeek; // HRBTO is fixed $100K for priority weeks
                     note = '+$100K HRBTO';
                 }
                 
@@ -457,7 +532,7 @@
             });
 
             // Final overall total adjustment for $1M tier to guarantee exact sum
-            ensureExactSum(currentTierData1000, campaignData.tier1000.total);
+            ensureExactSumAnd500Granularity(currentTierData1000, campaignData.tier1000.total, 4); 
             campaignData.tier1000.data = currentTierData1000;
         }
 
